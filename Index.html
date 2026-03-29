@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avlessi</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--accent:#22c55e;--text:#f1f5f9}
+*{box-sizing:border-box;font-family:system-ui,Arial}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);padding:20px}
+.card{background:var(--card);padding:20px;border-radius:12px;max-width:520px;width:100%;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+input,select,textarea,button{width:100%;padding:11px;margin:7px 0;border:none;border-radius:8px;background:#334155;color:var(--text);font-size:15px}
+button{background:var(--accent);color:#0f172a;font-weight:600;cursor:pointer}
+a.link{display:block;padding:11px;background:#0f172a;color:var(--accent);border-radius:8px;word-break:break-all;text-decoration:none;margin:7px 0}
+ul{padding:0;list-style:none}
+li{background:#0f172a;margin:7px 0;padding:11px;border-radius:8px}
+.invite{white-space:pre-line;line-height:1.6;background:#0f172a;padding:14px;border-radius:10px;border:1px solid #334155}
+</style>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getFirestore,doc,setDoc,getDoc,collection,addDoc,onSnapshot,deleteDoc} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const FIREBASE_CONFIG = {
+  apiKey: "TA_CLE_API",
+  authDomain: "TON_PROJET.firebaseapp.com",
+  projectId: "TON_PROJET",
+  storageBucket: "TON_PROJET.appspot.com",
+  messagingSenderId: "XXXX",
+  appId: "1:XXX:web:XXX"
+};
+
+const app = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(app);
+
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const invId = params.get('i');
+const admId = params.get('a');
+
+if(admId) showAdmin(admId);
+else if(invId) showInvite(invId);
+
+$('gAns').onchange = e => $('gReason').style.display = e.target.value!=='Oui'?'block':'none';
+
+$('cForm').onsubmit = async e => {
+  e.preventDefault();
+  const id = Date.now().toString(36);
+  const d = {
+    org:$('org').value,nom:$('nom').value,date:$('date').value,heure:$('heure').value,
+    lieu:$('lieu').value,obj:$('objectif').value,dead:$('deadline').value,
+    contact:$('contact').value,dress:$('dress').value,infos:$('infos').value,type:$('type').value
+  };
+  await setDoc(doc(db,"events",id),d);
+  const invite = location.origin+location.pathname+'?i='+id;
+  const admin  = location.origin+location.pathname+'?a='+id;
+  $('inviteLink').href=invite; $('inviteLink').textContent=invite;
+  $('adminLink').href=admin; $('adminLink').textContent=admin;
+  $('links').style.display='block';
+};
+
+$('rForm').onsubmit = async e => {
+  e.preventDefault();
+  const id = e.target.dataset.id;
+  await addDoc(collection(db,"events",id,"replies"),{
+    n:$('gName').value,a:$('gAns').value,r:$('gReason').value,t:new Date().toLocaleString()
+  });
+  $('rForm').style.display='none';
+  $('thanks').style.display='block';
+};
+
+function fmt(d,id){
+  return `Vous êtes cordialement invité(e) à ${d.nom} qui se tiendra le ${d.date} à partir de ${d.heure}, au ${d.lieu}. Cet événement, organisé par ${d.org}, sera l’occasion de ${d.obj}. Merci de bien vouloir confirmer votre présence avant le ${d.dead} en cliquant sur le lien suivant : ${location.origin+location.pathname+'?i='+id} ou en contactant ${d.contact}. Une tenue ${d.dress} est recommandée. Pour toute information complémentaire, veuillez nous joindre à ${d.infos}. Nous serions honorés de votre présence.`;
+}
+
+async function showInvite(id){
+  const snap = await getDoc(doc(db,"events",id));
+  if(!snap.exists()){alert('Invitation introuvable');return}
+  $('createView').style.display='none';
+  $('replyView').style.display='block';
+  $('inviteText').textContent=fmt(snap.data(),id);
+  $('rForm').dataset.id=id;
+}
+
+function showAdmin(id){
+  $('createView').style.display='none';
+  $('adminView').style.display='block';
+  getDoc(doc(db,"events",id)).then(snap=>{
+    if(!snap.exists()){alert('Invitation introuvable');return}
+    $('inviteTextAdmin').textContent=fmt(snap.data(),id);
+  });
+  const ul=$('answersList');
+  onSnapshot(collection(db,"events",id,"replies"), snap=>{
+    ul.innerHTML = snap.empty ? '<li>Aucune réponse</li>' :
+      snap.docs.map(doc=>{const r=doc.data();return `<li><strong>${r.n}</strong> → ${r.a}<br><small>${r.r||''}</small><br><small style="color:#94a3b8">${r.t}</small></li>`}).join('');
+  });
+  window.clearAns=async()=>{ if(confirm('Effacer toutes les réponses ?')) {
+    const snap = await getDocs(collection(db,"events",id,"replies"));
+    snap.forEach(d=>deleteDoc(d.ref));
+  }};
+}
+</script>
+</head>
+<body>
+
+<div id="createView" class="card">
+  <h1>Avlessi</h1>
+  <form id="cForm">
+    <input id="org" placeholder="Nom de l’organisateur" required>
+    <input id="nom" placeholder="Nom de l’événement" required>
+    <input id="date" type="date" required>
+    <input id="heure" type="time" required>
+    <input id="lieu" placeholder="Lieu précis" required>
+    <input id="objectif" placeholder="Objectif ou thème" required>
+    <input id="deadline" type="date" required>
+    <input id="contact" placeholder="Numéro ou email de contact" required>
+    <input id="dress" placeholder="Code vestimentaire" required>
+    <input id="infos" placeholder="Coordonnées complémentaires" required>
+    <select id="type" required>
+      <option value="">Type d’événement</option>
+      <option>Anniversaire</option><option>Mariage</option><option>Événement professionnel</option>
+      <option>Soirée</option><option>Funérailles</option><option>Baptême</option><option>Réunion</option><option>Autre</option>
+    </select>
+    <button>Créer les liens</button>
+  </form>
+
+  <div id="links" style="display:none">
+    <p>Lien invité</p><a id="inviteLink" class="link" target="_blank"></a><button onclick="navigator.clipboard.writeText(inviteLink.href);alert('Copié')">Copier</button>
+    <p>Lien admin</p><a id="adminLink" class="link" target="_blank"></a><button onclick="navigator.clipboard.writeText(adminLink.href);alert('Copié')">Copier</button>
+  </div>
+</div>
+
+<div id="replyView" class="card" style="display:none">
+  <h1>Avlessi</h1>
+  <div id="inviteText" class="invite"></div>
+  <form id="rForm">
+    <input id="gName" placeholder="Votre nom complet" required>
+    <select id="gAns" required>
+      <option value="Oui">Oui, je serai présent(e)</option>
+      <option value="Peut-être">Peut-être</option>
+      <option value="Non">Non, je ne pourrai pas</option>
+    </select>
+    <textarea id="gReason" placeholder="Raison (facultatif)" style="display:none"></textarea>
+    <button>Confirmer</button>
+  </form>
+  <p id="thanks" style="display:none;color:#22c55e;text-align:center">Réponse enregistrée</p>
+</div>
+
+<div id="adminView" class="card" style="display:none">
+  <h1>Avlessi – Réponses</h1>
+  <div id="inviteTextAdmin" class="invite"></div>
+  <ul id="answersList"></ul>
+  <button onclick="clearAns()">Effacer tout</button>
+</div>
+</body>
+</html>
